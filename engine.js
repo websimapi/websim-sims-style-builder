@@ -93,6 +93,7 @@ export class Engine {
     this.isPinching = false;
     this.touchStartTime = 0;
     this.hasMoved = false;
+    this.isToolInteraction = false;
 
     // Bindings
     this.onResize = this.onResize.bind(this);
@@ -108,6 +109,7 @@ export class Engine {
     window.addEventListener('pointerup', this.onPointerUp);
     window.addEventListener('pointercancel', this.onPointerUp);
     canvas.addEventListener('wheel', this.onWheel, { passive: false });
+    canvas.addEventListener('contextmenu', e => e.preventDefault());
 
     this.animate();
   }
@@ -136,8 +138,8 @@ export class Engine {
 
     // Fallback to infinite plane for building outside terrain bounds
     const target = new THREE.Vector3();
-    this.raycaster.ray.intersectPlane(this.plane, target);
-    if (target) return { point: target, object: null };
+    const result = this.raycaster.ray.intersectPlane(this.plane, target);
+    if (result) return { point: result, object: null };
 
     return null;
   }
@@ -177,15 +179,25 @@ export class Engine {
     this.pointerCache.set(e.pointerId, e);
 
     if (this.pointerCache.size === 1) {
-      this.isDragging = true;
-      this.startX = e.clientX;
-      this.startY = e.clientY;
-      this.lastMouse.set(e.clientX, e.clientY);
-      this.touchStartTime = Date.now();
-      this.hasMoved = false;
+      const hit = this.getIntersection(e.clientX, e.clientY);
+      
+      // Check if tool handles this (1 finger + active tool + hit)
+      if (this.currentToolCallback && hit) {
+          this.isToolInteraction = true;
+          this.currentToolCallback(hit.point, 'start');
+      } else {
+          // Camera interaction
+          this.isDragging = true;
+          this.startX = e.clientX;
+          this.startY = e.clientY;
+          this.lastMouse.set(e.clientX, e.clientY);
+          this.touchStartTime = Date.now();
+          this.hasMoved = false;
+      }
     } else if (this.pointerCache.size === 2) {
       this.isPinching = true;
-      this.isDragging = false; // Cancel single finger interaction
+      this.isDragging = false; 
+      this.isToolInteraction = false;
       
       const points = Array.from(this.pointerCache.values());
       const p1 = points[0];
@@ -229,11 +241,15 @@ export class Engine {
 
     const hit = this.getIntersection(e.clientX, e.clientY);
 
-    // Tool Preview (Ghost) - Only if not dragging heavily
-    if (!this.isDragging || !this.hasMoved) {
-       if (this.currentToolCallback && hit) {
-          this.currentToolCallback(hit.point, false); // isClick = false
-       }
+    // Tool Interaction (Drag)
+    if (this.isToolInteraction && hit) {
+       this.currentToolCallback(hit.point, 'move');
+       return;
+    }
+
+    // Tool Preview (Hover) - Only if not dragging/pinching
+    if (!this.isDragging && !this.isPinching && this.currentToolCallback && hit) {
+       this.currentToolCallback(hit.point, 'hover');
     }
 
     if (!this.isDragging) return;
@@ -267,6 +283,17 @@ export class Engine {
     // Reset Multi-touch state if dropping below 2 fingers
     if (this.pointerCache.size < 2) {
       this.isPinching = false;
+    }
+
+    // End Tool Interaction
+    if (this.isToolInteraction) {
+        const hit = this.getIntersection(e.clientX, e.clientY);
+        if (hit) this.currentToolCallback(hit.point, 'end');
+        
+        if (this.pointerCache.size === 0) {
+           this.isToolInteraction = false;
+        }
+        return;
     }
 
     // Seamless transition: if 1 finger remains, anchor it for potential orbit
