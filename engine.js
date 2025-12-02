@@ -86,6 +86,14 @@ export class Engine {
     this.orbitPhi = Math.PI / 4;
     this.panOffset = new THREE.Vector3(0, 0, 0);
 
+    // Pointer State
+    this.pointerCache = new Map();
+    this.pinchDist = 0;
+    this.pinchCenter = new THREE.Vector2();
+    this.isPinching = false;
+    this.touchStartTime = 0;
+    this.hasMoved = false;
+
     // Bindings
     this.onResize = this.onResize.bind(this);
     this.onPointerDown = this.onPointerDown.bind(this);
@@ -98,6 +106,7 @@ export class Engine {
     canvas.addEventListener('pointerdown', this.onPointerDown);
     window.addEventListener('pointermove', this.onPointerMove);
     window.addEventListener('pointerup', this.onPointerUp);
+    window.addEventListener('pointercancel', this.onPointerUp);
     canvas.addEventListener('wheel', this.onWheel, { passive: false });
 
     this.animate();
@@ -149,26 +158,94 @@ export class Engine {
     this.camera.lookAt(this.panOffset);
   }
 
+  panCamera(deltaX, deltaY) {
+    const panSpeed = 0.02 * (this.orbitRadius / 10);
+    const forward = new THREE.Vector3();
+    this.camera.getWorldDirection(forward);
+    forward.y = 0;
+    forward.normalize();
+
+    const right = new THREE.Vector3();
+    right.crossVectors(forward, this.camera.up).normalize();
+
+    this.panOffset.addScaledVector(right, -deltaX * panSpeed);
+    this.panOffset.addScaledVector(forward, deltaY * panSpeed);
+    this.updateCamera();
+  }
+
   onPointerDown(e) {
-    this.isDragging = true;
-    this.startX = e.clientX;
-    this.startY = e.clientY;
-    this.lastMouse.set(e.clientX, e.clientY);
-    this.touchStartTime = Date.now();
+    this.pointerCache.set(e.pointerId, e);
+
+    if (this.pointerCache.size === 1) {
+      this.isDragging = true;
+      this.startX = e.clientX;
+      this.startY = e.clientY;
+      this.lastMouse.set(e.clientX, e.clientY);
+      this.touchStartTime = Date.now();
+      this.hasMoved = false;
+    } else if (this.pointerCache.size === 2) {
+      this.isPinching = true;
+      this.isDragging = false; // Cancel single finger interaction
+      
+      const points = Array.from(this.pointerCache.values());
+      const p1 = points[0];
+      const p2 = points[1];
+      
+      this.pinchDist = Math.hypot(p1.clientX - p2.clientX, p1.clientY - p2.clientY);
+      this.pinchCenter.set((p1.clientX + p2.clientX) / 2, (p1.clientY + p2.clientY) / 2);
+    }
   }
 
   onPointerMove(e) {
+    this.pointerCache.set(e.pointerId, e);
+
+    // Multi-touch Pan/Zoom
+    if (this.pointerCache.size === 2) {
+      const points = Array.from(this.pointerCache.values());
+      const p1 = points[0];
+      const p2 = points[1];
+      
+      const dist = Math.hypot(p1.clientX - p2.clientX, p1.clientY - p2.clientY);
+      const center = new THREE.Vector2((p1.clientX + p2.clientX) / 2, (p1.clientY + p2.clientY) / 2);
+
+      if (this.isPinching) {
+          const deltaX = center.x - this.pinchCenter.x;
+          const deltaY = center.y - this.pinchCenter.y;
+          
+          // Pan (Scaled for better feel on touch)
+          this.panCamera(deltaX * 2.5, deltaY * 2.5);
+
+          // Zoom
+          const zoomDelta = dist - this.pinchDist;
+          this.orbitRadius -= zoomDelta * 0.05;
+          this.orbitRadius = Math.max(2, Math.min(50, this.orbitRadius));
+          this.updateCamera();
+      }
+      
+      this.pinchDist = dist;
+      this.pinchCenter.copy(center);
+      return;
+    }
+
     const hit = this.getIntersection(e.clientX, e.clientY);
 
-    // Tool Preview Logic (Ghost)
-    if (this.currentToolCallback && hit) {
-      this.currentToolCallback(hit.point, false); // isClick = false
+    // Tool Preview (Ghost) - Only if not dragging heavily
+    if (!this.isDragging || !this.hasMoved) {
+       if (this.currentToolCallback && hit) {
+          this.currentToolCallback(hit.point, false); // isClick = false
+       }
     }
 
     if (!this.isDragging) return;
 
     const deltaX = e.clientX - this.lastMouse.x;
     const deltaY = e.clientY - this.lastMouse.y;
+
+    // Check significant movement for click cancellation
+    if (Math.hypot(e.clientX - this.startX, e.clientY - this.startY) > 5) {
+       this.hasMoved = true;
+    }
+    
     this.lastMouse.set(e.clientX, e.clientY);
 
     // Orbit (Left click or Touch)
@@ -180,40 +257,46 @@ export class Engine {
     }
     // Pan (Right click)
     else if (e.buttons === 2) {
-        const panSpeed = 0.02 * (this.orbitRadius / 10);
-        const forward = new THREE.Vector3();
-        this.camera.getWorldDirection(forward);
-        forward.y = 0;
-        forward.normalize();
-
-        const right = new THREE.Vector3();
-        right.crossVectors(forward, this.camera.up).normalize();
-
-        this.panOffset.addScaledVector(right, -deltaX * panSpeed);
-        this.panOffset.addScaledVector(forward, deltaY * panSpeed);
-        this.updateCamera();
+        this.panCamera(deltaX, deltaY);
     }
   }
 
   onPointerUp(e) {
-    this.isDragging = false;
-    // Click detection (small movement + short time)
-    const dist = Math.hypot(e.clientX - this.startX, e.clientY - this.startY);
-    const time = Date.now() - this.touchStartTime;
+    this.pointerCache.delete(e.pointerId);
+    
+    // Reset Multi-touch state if dropping below 2 fingers
+    if (this.pointerCache.size < 2) {
+      this.isPinching = false;
+    }
 
-    if (dist < 5 && time < 300) {
-      const hit = this.getIntersection(e.clientX, e.clientY);
-      if (hit) {
-        // Run active tool OR select object
-        if (this.currentToolCallback) {
-          this.currentToolCallback(hit.point, true); // isClick = true
-        } else if (hit.object && hit.object !== this.terrain && hit.object.uuid !== this.highlightMesh.uuid) {
-          // Select object
-          this.selectObject(hit.object);
-        } else {
-            this.deselect();
+    // Seamless transition: if 1 finger remains, anchor it for potential orbit
+    if (this.pointerCache.size === 1) {
+      const p = this.pointerCache.values().next().value;
+      this.lastMouse.set(p.clientX, p.clientY);
+    } else {
+       this.isDragging = false;
+    }
+
+    // Click detection
+    // Valid only if no pinch occurred and we have 0 fingers left and didn't move much
+    if (!this.isPinching && this.pointerCache.size === 0) {
+        const dist = Math.hypot(e.clientX - this.startX, e.clientY - this.startY);
+        const time = Date.now() - this.touchStartTime;
+
+        if (dist < 10 && time < 400) {
+          const hit = this.getIntersection(e.clientX, e.clientY);
+          if (hit) {
+            // Run active tool OR select object
+            if (this.currentToolCallback) {
+              this.currentToolCallback(hit.point, true); // isClick = true
+            } else if (hit.object && hit.object !== this.terrain && hit.object.uuid !== this.highlightMesh.uuid) {
+              // Select object
+              this.selectObject(hit.object);
+            } else {
+                this.deselect();
+            }
+          }
         }
-      }
     }
   }
 

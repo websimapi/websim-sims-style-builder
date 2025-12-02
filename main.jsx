@@ -342,14 +342,14 @@ function App() {
         lineNumber: 263,
         columnNumber: 11
       }, this),
-      /* @__PURE__ */ jsxDEV("div", { className: "flex-1 overflow-y-auto p-4 bg-gray-50 no-scrollbar", children: [
+      /* @__PURE__ */ jsxDEV("div", { className: "flex-1 overflow-y-auto p-4 bg-gray-50 no-scrollbar pb-20 md:pb-4", children: [
         activeTool === TOOLS.SELECT && /* @__PURE__ */ jsxDEV("div", { className: "text-center text-gray-500 mt-4", children: [
           /* @__PURE__ */ jsxDEV("p", { children: "Tap an object to select it." }, void 0, false, {
             fileName: "<stdin>",
             lineNumber: 276,
             columnNumber: 17
           }, this),
-          /* @__PURE__ */ jsxDEV("p", { className: "text-xs mt-2", children: "One finger to rotate camera \u2022 Two fingers to pan/zoom" }, void 0, false, {
+          /* @__PURE__ */ jsxDEV("p", { className: "text-xs mt-2", children: "One finger to rotate \u2022 Two fingers to pan/zoom" }, void 0, false, {
             fileName: "<stdin>",
             lineNumber: 277,
             columnNumber: 17
@@ -396,7 +396,7 @@ function App() {
                   lineNumber: 303,
                   columnNumber: 28
                 }, this),
-                /* @__PURE__ */ jsxDEV("span", { className: "text-[10px] text-center leading-tight", children: item.name }, void 0, false, {
+                /* @__PURE__ */ jsxDEV("span", { className: "text-xs text-center leading-tight", children: item.name }, void 0, false, {
                   fileName: "<stdin>",
                   lineNumber: 304,
                   columnNumber: 28
@@ -485,14 +485,14 @@ const ToolTab = ({ icon: Icon, label, active, onClick }) => /* @__PURE__ */ jsxD
   "button",
   {
     onClick,
-    className: `flex flex-col items-center p-2 min-w-[60px] rounded transition-colors ${active ? "text-blue-600" : "text-gray-500 hover:text-gray-800"}`,
+    className: `flex flex-col items-center p-2 min-w-[64px] rounded transition-colors ${active ? "text-blue-600" : "text-gray-500 hover:text-gray-800"}`,
     children: [
       /* @__PURE__ */ jsxDEV(Icon, { size: 24 }, void 0, false, {
         fileName: "<stdin>",
         lineNumber: 335,
         columnNumber: 5
       }),
-      /* @__PURE__ */ jsxDEV("span", { className: "text-[10px] mt-1 font-medium", children: label }, void 0, false, {
+      /* @__PURE__ */ jsxDEV("span", { className: "text-xs mt-1 font-medium", children: label }, void 0, false, {
         fileName: "<stdin>",
         lineNumber: 336,
         columnNumber: 5
